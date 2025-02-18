@@ -24,17 +24,20 @@ def weather_view(request):
 
 User = get_user_model()
 
-API_KEY = "2634504740ffcea2b39bbff31b6f0f52"  # API-ключ OpenWeatherMap
-
+API_KEY = "6d8e495ca73d5bbc1d6bf8ebd52c4"  # API-ключ OpenWeatherMap
 
 @csrf_exempt
 def register_user_view(request):
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)
+            if request.content_type == 'application/json':
+                data = json.loads(request.body.decode('utf-8'))
+            else:
+                data = request.POST.dict()
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
 
+        data['role'] = 'user'  # Default role for user registration
         serializer = UserRegisterSerializer(data=data)
         if serializer.is_valid():
             user = serializer.save()
@@ -48,8 +51,36 @@ def register_user_view(request):
 
         return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    return render(request, 'weather/register.html')
+    cities = City.objects.all()
+    return render(request, 'weather/register.html', {'cities': cities})
 
+@csrf_exempt
+def register_manager_view(request):
+    if request.method == 'POST':
+        try:
+            if request.content_type == 'application/json':
+                data = json.loads(request.body.decode('utf-8'))
+            else:
+                data = request.POST.dict()
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
+
+        data['role'] = 'manager'  # Role for manager registration
+        serializer = UserRegisterSerializer(data=data)
+        if serializer.is_valid():
+            user = serializer.save()
+
+            # Create JWT tokens immediately after registration
+            refresh = RefreshToken.for_user(user)
+            return JsonResponse({
+                "refresh": str(refresh),
+                "access": str(refresh.access_token)
+            }, status=status.HTTP_201_CREATED)
+
+        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    cities = City.objects.all()
+    return render(request, 'weather/register_manager.html', {'cities': cities})
 
 class CityView(APIView):
     """Менеджер может добавлять города"""
@@ -66,10 +97,21 @@ class CityView(APIView):
 
         serializer = CitySerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            city_name = serializer.validated_data['name']
+            country = serializer.validated_data['country']
+            url = f"http://api.openweathermap.org/data/2.5/find?q={city_name},{country}&type=like&APPID={API_KEY}"
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                if data['count'] > 0:
+                    city_data = data['list'][0]
+                    serializer.save(city_id=city_data['id'])
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+                else:
+                    return Response({"error": "City not found in OpenWeatherMap"}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "Error fetching data from OpenWeatherMap"}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class WeatherView(APIView):
     """Пользователь получает погоду только для своего города"""

@@ -1,13 +1,13 @@
 {% extends "weather/base.html" %}
 
-{% block title %}Регистрация{% endblock %}
+{% block title %}Регистрация Менеджера{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
-    <h2 class="text-center">Регистрация</h2>
+    <h2 class="text-center">Регистрация Менеджера</h2>
     <div class="row justify-content-center">
         <div class="col-md-4">
-            <form id="registerForm" method="post" action="{% url 'register_user' %}">
+            <form id="registerManagerForm" method="post" action="{% url 'register_manager' %}">
                 {% csrf_token %}
                 <div class="mb-3">
                     <label class="form-label">Логин</label>
@@ -17,28 +17,20 @@
                     <label class="form-label">Пароль</label>
                     <input type="password" id="password" name="password" class="form-control" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Город</label>
-                    <select id="city" name="city" class="form-select" required>
-                        {% for city in cities %}
-                            <option value="{{ city.id }}">{{ city.name }} ({{ city.country }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
                 <button type="submit" class="btn btn-success w-100">Зарегистрироваться</button>
             </form>
             <p class="text-center mt-3">
                 Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
             </p>
             <p class="text-center mt-3">
-                <a href="{% url 'register_manager' %}">Зарегистрироваться как Менеджер</a>
+                <a href="{% url 'register' %}">Зарегистрироваться как Пользователь</a>
             </p>
         </div>
     </div>
 </div>
 
 <script>
-document.getElementById('registerForm').addEventListener('submit', async function(event) {
+document.getElementById('registerManagerForm').addEventListener('submit', async function(event) {
     event.preventDefault();
     const form = event.target;
     const formData = new FormData(form);
