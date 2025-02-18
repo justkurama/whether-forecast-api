@@ -1,0 +1,75 @@
+{% extends "weather/base.html" %}
+
+{% block title %}Вход{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center">Вход</h2>
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <form id="login-form">
+                <div class="mb-3">
+                    <label class="form-label">Логин</label>
+                    <input type="text" id="username" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Пароль</label>
+                    <input type="password" id="password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Войти</button>
+            </form>
+            <p class="text-center mt-3">
+                Нет аккаунта? <a href="{% url 'register' %}">Регистрация</a>
+            </p>
+        </div>
+    </div>
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-6">
+            <h3 class="text-center">Погода</h3>
+            <div id="weather-info" class="text-center">
+                <p>Загрузка...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("login-form").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    let username = document.getElementById("username").value;
+    let password = document.getElementById("password").value;
+
+    let response = await fetch("{% url 'token_obtain_pair' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+    });
+
+    if (response.ok) {
+        let data = await response.json();
+        localStorage.setItem("access_token", data.access);
+        localStorage.setItem("refresh_token", data.refresh);
+        window.location.href = "{% url 'weather' %}";
+    } else {
+        alert("Ошибка входа. Проверьте логин и пароль.");
+    }
+});
+
+async function fetchWeather() {
+    let response = await fetch("YOUR_WEATHER_API_URL");
+    if (response.ok) {
+        let data = await response.json();
+        document.getElementById("weather-info").innerHTML = `
+            <p>Температура: ${data.temperature}°C</p>
+            <p>Влажность: ${data.humidity}%</p>
+            <p>Описание: ${data.description}</p>
+        `;
+    } else {
+        document.getElementById("weather-info").innerHTML = "<p>Не удалось загрузить данные о погоде.</p>";
+    }
+}
+
+fetchWeather();
+</script>
+{% endblock %}

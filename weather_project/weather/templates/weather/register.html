@@ -1,0 +1,59 @@
+{% extends "weather/base.html" %}
+
+{% block title %}Регистрация{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center">Регистрация</h2>
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <form id="register-form">
+                <div class="mb-3">
+                    <label class="form-label">Логин</label>
+                    <input type="text" id="username" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Пароль</label>
+                    <input type="password" id="password" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Роль</label>
+                    <select id="role" class="form-select">
+                        <option value="user">Пользователь</option>
+                        <option value="manager">Менеджер</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success w-100">Зарегистрироваться</button>
+            </form>
+            <p class="text-center mt-3">
+                Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("register-form").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    let username = document.getElementById("username").value;
+    let password = document.getElementById("password").value;
+    let role = document.getElementById("role").value;
+
+    let response = await fetch("{% url 'register' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role })
+    });
+
+    if (response.ok) {
+        let data = await response.json();
+        localStorage.setItem("access_token", data.access);
+        localStorage.setItem("refresh_token", data.refresh);
+        window.location.href = "{% url 'weather' %}";
+    } else {
+        alert("Ошибка регистрации");
+    }
+});
+</script>
+{% endblock %}
