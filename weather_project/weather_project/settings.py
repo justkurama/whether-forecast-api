@@ -84,9 +84,9 @@ WSGI_APPLICATION = 'weather_project.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'weather_db',
-        'USER': 'postgres',
-        'PASSWORD': 'kurama_0723',
+        'NAME': 'weather_db',   # Имя базы данных
+        'USER': 'postgres',     # Имя пользователя от PostgreSQL
+        'PASSWORD': 'password', # Пароль от PostgreSQL
         'HOST': 'localhost',
         'PORT': '5432',
     }
