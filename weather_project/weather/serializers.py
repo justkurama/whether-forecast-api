@@ -1,25 +1,28 @@
 from rest_framework import serializers
-from .models import WeatherData, City
 from django.contrib.auth import get_user_model
+from .models import City, WeatherData
 
 User = get_user_model()
 
 class CitySerializer(serializers.ModelSerializer):
     class Meta:
         model = City
-        fields = '__all__'
+        fields = ['id', 'name', 'city_id']
 
-class UserRegisterSerializer(serializers.ModelSerializer):
+class WeatherDataSerializer(serializers.ModelSerializer):
+    city = CitySerializer()
+    
+    class Meta:
+        model = WeatherData
+        fields = ['city', 'temperature', 'description', 'humidity', 'wind_speed', 'updated_at']
+
+class UserSerializer(serializers.ModelSerializer):
+    city = CitySerializer(read_only=True)
     class Meta:
         model = User
-        fields = ['username', 'password', 'role', 'city']
+        fields = ['id', 'username', 'email', 'role', 'city', 'password']
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         return user
-
-class WeatherDataSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = WeatherData
-        fields = '__all__'

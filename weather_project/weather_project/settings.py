@@ -24,6 +24,8 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-n630oi$qgx^xx=3)up*x+l&%&x)cagxxaay5*-y702fi^+x55^'
 
+API_KEY = "2634504740ffcea2b39bbff31b6f0f52"  # API-ключ OpenWeatherMap
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -42,6 +44,7 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'weather',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [

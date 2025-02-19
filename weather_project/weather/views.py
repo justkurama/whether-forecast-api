@@ -1,174 +1,163 @@
-import requests
-from django.utils.timezone import now
+from rest_framework import generics, status, permissions
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import get_user_model
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from .models import WeatherData, City
-from .serializers import WeatherDataSerializer, CitySerializer, UserRegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate, login
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
+from rest_framework.views import APIView
+from django.contrib.auth import get_user_model, authenticate
+from .models import City, WeatherData
+from .serializers import UserSerializer, CitySerializer, WeatherDataSerializer
+from django.conf import settings
+import requests
 
-def home_view(request):
-    return render(request, "weather/home.html")
-
-@login_required
-def weather_view(request):
-    return render(request, "weather/weather.html")
+api_key = settings.API_KEY
 
 User = get_user_model()
 
-API_KEY = "6d8e495ca73d5bbc1d6bf8ebd52c4"  # API-ключ OpenWeatherMap
+class RegisterUserView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
 
-@csrf_exempt
-def register_user_view(request):
-    if request.method == 'POST':
-        try:
-            if request.content_type == 'application/json':
-                data = json.loads(request.body.decode('utf-8'))
-            else:
-                data = request.POST.dict()
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
+    def create(self, request, *args, **kwargs):
+        city_name = request.data.get("city")
 
-        data['role'] = 'user'  # Default role for user registration
-        serializer = UserRegisterSerializer(data=data)
-        if serializer.is_valid():
-            user = serializer.save()
+        city = City.objects.filter(name=city_name).first()
+        if not city:
+            return Response({"error": "Указанный город не найден"}, status=400)
 
-            # Create JWT tokens immediately after registration
+        user = User.objects.create_user(
+            username=request.data["username"],
+            password=request.data["password"],
+            role=request.data["role"],
+            city=city
+        )
+
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class RegisterManagerView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    def perform_create(self, serializer):
+        user = serializer.save(role='manager', is_staff=True)
+        user.save()
+
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
+        if user:
             refresh = RefreshToken.for_user(user)
-            return JsonResponse({
+            return Response({
+                "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "access": str(refresh.access_token)
-            }, status=status.HTTP_201_CREATED)
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "role": user.role,
+                    "city": user.city.name if user.city else None
+                }
+            })
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    cities = City.objects.all()
-    return render(request, 'weather/register.html', {'cities': cities})
-
-@csrf_exempt
-def register_manager_view(request):
-    if request.method == 'POST':
-        try:
-            if request.content_type == 'application/json':
-                data = json.loads(request.body.decode('utf-8'))
-            else:
-                data = request.POST.dict()
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
-
-        data['role'] = 'manager'  # Role for manager registration
-        serializer = UserRegisterSerializer(data=data)
-        if serializer.is_valid():
-            user = serializer.save()
-
-            # Create JWT tokens immediately after registration
-            refresh = RefreshToken.for_user(user)
-            return JsonResponse({
-                "refresh": str(refresh),
-                "access": str(refresh.access_token)
-            }, status=status.HTTP_201_CREATED)
-
-        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    cities = City.objects.all()
-    return render(request, 'weather/register_manager.html', {'cities': cities})
-
-class CityView(APIView):
-    """Менеджер может добавлять города"""
+class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        cities = City.objects.all()
-        serializer = CitySerializer(cities, many=True)
-        return Response(serializer.data)
 
     def post(self, request):
-        if request.user.role != 'manager':
-            return Response({"error": "Только менеджер может добавлять города."}, status=status.HTTP_403_FORBIDDEN)
+        refresh_token = request.data.get("refresh")
 
-        serializer = CitySerializer(data=request.data)
-        if serializer.is_valid():
-            city_name = serializer.validated_data['name']
-            country = serializer.validated_data['country']
-            url = f"http://api.openweathermap.org/data/2.5/find?q={city_name},{country}&type=like&APPID={API_KEY}"
-            response = requests.get(url)
-            if response.status_code == 200:
-                data = response.json()
-                if data['count'] > 0:
-                    city_data = data['list'][0]
-                    serializer.save(city_id=city_data['id'])
-                    return Response(serializer.data, status=status.HTTP_201_CREATED)
-                else:
-                    return Response({"error": "City not found in OpenWeatherMap"}, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                return Response({"error": "Error fetching data from OpenWeatherMap"}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not refresh_token:
+            return Response({"error": "Refresh-токен обязателен"}, status=status.HTTP_400_BAD_REQUEST)
 
-class WeatherView(APIView):
-    """Пользователь получает погоду только для своего города"""
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({"detail": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CityView(generics.ListCreateAPIView):
+    queryset = City.objects.all()
+    serializer_class = CitySerializer
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsAuthenticated()]
+        return [permissions.AllowAny()]
+
+class UserWeatherView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not request.user.city:
-            return Response({"error": "Вы не выбрали город при регистрации"}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        print(f"🔍 Пользователь {user.username} ищет погоду для города: {user.city}")
 
-        city = request.user.city  # Берем город пользователя
+        if not user.city:
+            return Response({"error": "У пользователя не указан город"}, status=400)
+
+        try:
+            city = City.objects.get(name=user.city)
+        except City.DoesNotExist:
+            return Response({"error": "Город не найден"}, status=404)
+
         weather = WeatherData.objects.filter(city=city).first()
+        if not weather:
+            return Response({"error": "Нет данных о погоде"}, status=404)
 
-        # Проверяем, есть ли свежие данные (менее 10 минут)
-        if weather and (now() - weather.updated_at).total_seconds() < 600:
-            serializer = WeatherDataSerializer(weather)
-            return Response(serializer.data)
+        serializer = WeatherDataSerializer(weather)
+        return Response(serializer.data)
 
-        # Запрос к OpenWeatherMap по city_id
-        url = f"http://api.openweathermap.org/data/2.5/weather?id={city.city_id}&appid={API_KEY}&units=metric&lang=ru"
+class UpdateWeatherView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, city_id):
+        try:
+            city = City.objects.get(city_id=city_id)
+        except City.DoesNotExist:
+            return Response({"error": "Город не найден"}, status=404)
+
+        url = f"http://api.openweathermap.org/data/2.5/forecast?id={city_id}&appid={api_key}&units=metric"
         response = requests.get(url)
 
-        if response.status_code == 200:
-            data = response.json()
-            weather_data = {
-                "city": city,
-                "temperature": data["main"]["temp"],
-                "description": data["weather"][0]["description"],
+        if response.status_code != 200:
+            return Response({"error": "Ошибка получения данных с OpenWeatherMap"}, status=500)
+
+        data = response.json()
+
+        if "list" not in data or not data["list"]:
+            return Response({"error": "Неверный формат данных OpenWeatherMap"}, status=500)
+
+        forecast = data["list"][0]
+
+        if "main" not in forecast or "weather" not in forecast or "wind" not in forecast:
+            return Response({"error": "Отсутствуют необходимые данные в OpenWeatherMap"}, status=500)
+
+        weather, created = WeatherData.objects.update_or_create(
+            city=city,
+            defaults={
+                "temperature": forecast["main"]["temp"],
+                "description": forecast["weather"][0]["description"],
+                "humidity": forecast["main"]["humidity"],
+                "wind_speed": forecast["wind"]["speed"]
             }
+        )
 
-            # Обновляем или создаем запись в базе
-            if weather:
-                weather.temperature = weather_data["temperature"]
-                weather.description = weather_data["description"]
-                weather.updated_at = now()
-                weather.save()
-            else:
-                weather = WeatherData.objects.create(**weather_data)
+        return Response({"message": "Погода обновлена", "data": WeatherDataSerializer(weather).data})
 
-            serializer = WeatherDataSerializer(weather)
-            return Response(serializer.data)
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
 
-        return Response({"error": "Ошибка при получении данных"}, status=status.HTTP_400_BAD_REQUEST)
-
-def custom_login_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        user = authenticate(request, username=username, password=password)
-
-        if user is not None:
-            login(request, user)
-            refresh = RefreshToken.for_user(user)
-            return JsonResponse({
-                "refresh": str(refresh),
-                "access": str(refresh.access_token)
-            }, status=status.HTTP_200_OK)
-        else:
-            return JsonResponse({"error": "Неверное имя пользователя или пароль"}, status=status.HTTP_400_BAD_REQUEST)
-
-    return render(request, 'weather/login.html')
+    def get(self, request):
+        user = request.user
+        data = {
+            "username": user.username,
+            "role": user.role,
+            "city": user.city.name if user.city else None
+        }
+        if user.role == "manager":
+            data["added_cities"] = CitySerializer(City.objects.filter(manager=user), many=True).data
+        return Response(data)
