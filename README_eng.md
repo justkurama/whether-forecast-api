@@ -97,7 +97,7 @@ The API will be available at `http://127.0.0.1:8000/`
 
 ### 1️⃣ Run Tests
 ```sh
-$ pytest -v
+$ pytest -v -s
 ```
 ### 2️⃣ Test Flow
 - Manager Registration
